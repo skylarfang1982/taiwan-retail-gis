@@ -136,4 +136,64 @@ min_age_ratio = st.sidebar.slider(
     value=28,
     step=1,
 )
-all
+all_cities = df["縣市"].unique()
+selected_cities = st.sidebar.multiselect("選擇評估縣市", all_cities, default=all_cities)
+
+# 4. 數據篩選與權重計分邏輯
+filtered_df = df[
+    (df["所得平均數_萬元"] >= min_income)
+    & (df["目標年齡層佔比_百分比"] >= min_age_ratio)
+    & (df["縣市"].isin(selected_cities))
+]
+
+filtered_df["展店潛力總分"] = (
+    (filtered_df["所得平均數_萬元"] * 0.6)
+    + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
+).round(1)
+filtered_df = filtered_df.sort_values(by="展店潛力總分", ascending=False)
+
+# 5. 前端網頁排版 (左右雙欄)
+col1, col2 = st.columns([6, 4])
+
+with col1:
+    st.subheader("🗺️ 全台商圈展店潛力地理分布熱點")
+    if not filtered_df.empty:
+        # 繪製 GIS 互動式地圖
+        fig = px.scatter_mapbox(
+            filtered_df,
+            lat="latitude",
+            lon="longitude",
+            hover_name="附近核心商場/商圈",
+            hover_data=["縣市", "鄉鎮市區", "村里", "所得平均數_萬元", "展店潛力總分"],
+            color="展店潛力總分",
+            size="所得平均數_萬元",
+            color_continuous_scale=px.colors.cyclical.IceFire,
+            size_max=25,
+            zoom=7,
+            mapbox_style="carto-positron",
+            height=550,
+        )
+        fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("⚠️ 當前篩選條件過於嚴格，地圖無符合之商圈。")
+
+with col2:
+    st.subheader("🏆 最佳展店/進駐商場推薦排名")
+    if not filtered_df.empty:
+        display_df = filtered_df[
+            [
+                "附近核心商場/商圈",
+                "縣市",
+                "鄉鎮市區",
+                "所得平均數_萬元",
+                "展店潛力總分",
+            ]
+        ].reset_index(drop=True)
+        st.dataframe(display_df, use_container_width=True, height=510)
+    else:
+        st.info("暫無推薦資料")
+
+st.write("---")
+st.subheader("📊 篩選商圈詳細數據明細")
+st.dataframe(filtered_df, use_container_width=True)
