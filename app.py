@@ -7,7 +7,7 @@ st.set_page_config(
     page_title="全台零售業展店數據決策系統", page_icon="📍", layout="wide"
 )
 
-st.title("📍 全台零售業展店與商圈數據決策系統 (行政區與商場核心版)")
+st.title("📍 全台零售業展店與商圈數據決策系統-Skylar")
 st.markdown(
     "本系統整合**財政部鄉鎮市區綜所稅中位數大數據**與**真實核心商場分布**，提供高層次展店戰略評估。"
 )
