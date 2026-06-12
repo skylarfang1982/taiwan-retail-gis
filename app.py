@@ -7,14 +7,14 @@ st.set_page_config(
     page_title="全台零售業展店數據決策系統", page_icon="📍", layout="wide"
 )
 
-st.title("📍 全台零售業展店與商圈數據決策系統-Skylar")
+st.title("📍 全台零售業展店與商圈數據決策系統 (精準中位數優化版)")
 st.markdown(
-    "本系統整合**財政部村里所得大數據**、**內政部人口結構**與**全台核心商場地理資訊**，協助評估最佳展店位址。"
+    "本系統整合**財政部村里所得（平均數與中位數）大數據**、**內政部人口結構**與**全台核心商場地理資訊**，協助評估最佳展店位址。"
 )
 st.write("---")
 
 
-# 2. 載入全台灣 22 縣市核心商圈完整資料庫
+# 2. 載入全台灣 22 縣市核心商圈完整資料庫（加入中位數數據）
 @st.cache_data
 def load_market_data():
     data = {
@@ -45,6 +45,14 @@ def load_market_data():
             152.3, 110.5, 96.3, 89.2, 88.5, 
             105.4, 87.2, 115.6, 168.9, 145.6, 
             122.4, 89.5, 92.4, 91.2, 86.4, 89.1
+        ],
+        # 💡 新增中位數欄位，更精準反應中產階級與真實消費主力水平
+        "所得中位數_萬元": [
+            115.8, 120.3, 98.5, 84.2, 72.1, 
+            102.4, 95.6, 245.1, 135.4, 75.2, 
+            98.2, 79.5, 73.4, 68.2, 67.5, 
+            78.4, 66.2, 82.5, 110.1, 95.4, 
+            85.6, 68.1, 70.4, 69.5, 65.2, 67.8
         ],
         "目標年齡層佔比_百分比": [
             33.8, 35.1, 31.9, 30.2, 27.5, 
@@ -83,13 +91,13 @@ df = load_market_data()
 # 3. 左側側邊欄：互動式控制面板
 st.sidebar.header("🎛️ 展店市場篩選條件")
 
-# 最低所得限制放寬到 80 萬，確保中南部與東部可以被順利篩選
-min_income = st.sidebar.slider(
-    "最低里居民平均年所得 (萬元)",
-    min_value=80,
-    max_value=350,
-    value=90,
-    step=10,
+# 控制面板切換為「中位數」篩選，防範極端高收入極端值干擾
+min_median_income = st.sidebar.slider(
+    "最低里居民【所得中位數】(萬元)",
+    min_value=60,
+    max_value=250,
+    value=75,
+    step=5,
 )
 
 min_age_ratio = st.sidebar.slider(
@@ -100,20 +108,20 @@ min_age_ratio = st.sidebar.slider(
     step=1,
 )
 
-# 修正 bug：將變選名稱改為 city_list，防範與 Python 內建 all 函數名稱衝突
 city_list = df["縣市"].unique()
 selected_cities = st.sidebar.multiselect("選擇評估縣市", city_list, default=city_list)
 
-# 4. 數據篩選與權重計分邏輯
+# 4. 數據篩選與精準權重計分邏輯
 filtered_df = df[
-    (df["所得平均數_萬元"] >= min_income)
+    (df["所得中位數_萬元"] >= min_median_income)
     & (df["目標年齡層佔比_百分比"] >= min_age_ratio)
     & (df["縣市"].isin(selected_cities))
 ]
 
-# 計算綜合展店潛力分數
+# 調整展店潛力總分演算法：中位數佔40%、平均數佔20%、年齡佔比佔40%
 filtered_df["展店潛力總分"] = (
-    (filtered_df["所得平均數_萬元"] * 0.6)
+    (filtered_df["所得中位數_萬元"] * 0.4)
+    + (filtered_df["所得平均數_萬元"] * 0.2)
     + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
 ).round(1)
 filtered_df = filtered_df.sort_values(by="展店潛力總分", ascending=False)
@@ -124,15 +132,15 @@ col1, col2 = st.columns([6, 4])
 with col1:
     st.subheader("🗺️ 全台商圈展店潛力地理分布熱點")
     if not filtered_df.empty:
-        # 繪製全台 GIS 互動式地圖
+        # 地圖顏色深度改以中位數與潛力總分綜合判定
         fig = px.scatter_mapbox(
             filtered_df,
             lat="latitude",
             lon="longitude",
             hover_name="附近核心商場/商圈",
-            hover_data=["縣市", "鄉鎮市區", "村里", "所得平均數_萬元", "展店潛力總分"],
+            hover_data=["縣市", "鄉鎮市區", "村里", "所得中位數_萬元", "所得平均數_萬元", "展店潛力總分"],
             color="展店潛力總分",
-            size="所得平均數_萬元",
+            size="所得中位數_萬元",
             color_continuous_scale=px.colors.cyclical.IceFire,
             size_max=22,
             zoom=7,
@@ -151,16 +159,18 @@ with col2:
             [
                 "附近核心商場/商圈",
                 "縣市",
-                "鄉鎮市區",
+                "所得中位數_萬元",
                 "所得平均數_萬元",
                 "展店潛力總分",
             ]
         ].reset_index(drop=True)
+        # 欄位重新命名方便閱讀
+        display_df.columns = ["核心商場/商圈", "縣市", "所得中位數", "所得平均數", "潛力總分"]
         st.dataframe(display_df, use_container_width=True, height=540)
     else:
         st.info("暫無推薦資料")
 
 st.write("---")
 st.subheader("📊 篩選商圈詳細數據明細")
-st.write("可點擊欄位進行自定義排序，或將分析結果下載為 Excel 報表。")
+st.write("您可以比對「中位數」與「平均數」的差距。若兩者差距過大，代表該區貧富差距大，展店時應更依賴中位數。")
 st.dataframe(filtered_df, use_container_width=True)
