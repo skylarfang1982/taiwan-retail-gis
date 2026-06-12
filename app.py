@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -7,170 +8,130 @@ st.set_page_config(
     page_title="全台零售業展店數據決策系統", page_icon="📍", layout="wide"
 )
 
-st.title("📍 全台零售業展店與商圈數據決策系統-Skylar")
+st.title("📍 全台零售業展店與商圈數據決策系統 (真實官方數據商用版)")
 st.markdown(
-    "本系統整合**財政部村里所得（平均數與中位數）大數據**、**內政部人口結構**與**全台核心商場地理資訊**，協助評估最佳展店位址。"
+    "本系統即時加載**財政部綜所稅各村里結算大數據**與**內政部人口指標**，進行全台商圈展店潛力精準分析。"
 )
 st.write("---")
 
 
-# 2. 載入全台灣 22 縣市核心商圈完整資料庫（加入中位數數據）
+# 2. 自動加載真實 CSV 數據庫邏輯
 @st.cache_data
-def load_market_data():
-    data = {
-        "縣市": [
-            "台北市", "台北市", "新北市", "新北市", "基隆市", 
-            "桃園市", "桃園市", "新竹市", "新竹縣", "苗栗縣", 
-            "台中市", "台中市", "彰化縣", "南投縣", "雲林縣", 
-            "嘉義市", "嘉義縣", "台南市", "台南市", "高雄市", 
-            "高雄市", "屏東縣", "宜蘭縣", "花蓮縣", "台東縣", "澎湖縣"
-        ],
-        "鄉鎮市區": [
-            "信義區", "大安區", "板橋區", "中和區", "仁愛區", 
-            "中壢區", "桃園區", "東區", "竹北市", "頭份市", 
-            "西屯區", "東區", "彰化市", "南投市", "斗六市", 
-            "西區", "太保市", "中西區", "善化區", "鼓山區", 
-            "前鎮區", "屏東市", "宜蘭市", "花蓮市", "台東市", "馬公市"
-        ],
-        "村里": [
-            "安康里", "民炤里", "福丘里", "中原里", "智仁里", 
-            "青埔里", "同德里", "關新里", "鹿場里", "文化里", 
-            "惠來里", "旱溪里", "延平里", "三興里", "公正里", 
-            "致遠里", "過溝里", "郡王里", "蓮潭里", "龍水里", 
-            "建隆里", "文明里", "新民里", "國聯里", "中央里", "重光里"
-        ],
-        "所得平均數_萬元": [
-            175.2, 182.4, 132.5, 112.3, 95.4, 
-            142.1, 135.8, 301.2, 195.1, 98.2, 
-            152.3, 110.5, 96.3, 89.2, 88.5, 
-            105.4, 87.2, 115.6, 168.9, 145.6, 
-            122.4, 89.5, 92.4, 91.2, 86.4, 89.1
-        ],
-        # 💡 新增中位數欄位，更精準反應中產階級與真實消費主力水平
-        "所得中位數_萬元": [
-            115.8, 120.3, 98.5, 84.2, 72.1, 
-            102.4, 95.6, 245.1, 135.4, 75.2, 
-            98.2, 79.5, 73.4, 68.2, 67.5, 
-            78.4, 66.2, 82.5, 110.1, 95.4, 
-            85.6, 68.1, 70.4, 69.5, 65.2, 67.8
-        ],
-        "目標年齡層佔比_百分比": [
-            33.8, 35.1, 31.9, 30.2, 27.5, 
-            34.5, 32.1, 32.5, 31.2, 28.1, 
-            34.2, 29.5, 27.8, 26.2, 25.8, 
-            29.1, 25.2, 31.2, 26.5, 29.8, 
-            30.1, 26.4, 27.1, 26.8, 25.5, 24.8
-        ],
-        "附近核心商場/商圈": [
-            "台北信義新天地 / 微風信義", "遠東SOGO復興館 / 大安商圈", "板橋大遠百 / 環球購物中心", "中和環球購物中心", "基隆廟口商圈 / 東岸廣場",
-            "華泰名品城 / 桃園青埔商圈", "桃園藝文特區 / 統領廣場", "新竹科學園區商圈 / Costco", "遠東百貨竹北店", "頭份尚順購物中心",
-            "台中新光三越 / 大遠百 / 七期", "台中Lalaport / 大魯閣新時代", "彰化大埔商圈 / 孔廟商圈", "南投家樂福 / 草鞋墩夜市周邊", "斗六棒球場商圈 / 雲林民生商圈",
-            "嘉義新光三越 / 遠東百貨", "故宮南院商圈 / 嘉義高鐵特區", "台南新光三越西門店 / 藍晒圖", "南科工程師居住聚落", "高雄美術館特區 / 凹子底",
-            "高雄夢時代 / 漢神巨蛋", "屏東太平洋百貨 / 環球屏東店", "宜蘭新月廣場", "花蓮遠東百貨 / 東大門商圈", "台東秀泰廣場 / 鐵花村商圈", "澎湖三號港購物中心"
-        ],
-        "latitude": [
-            25.0358, 25.0392, 25.0135, 25.0064, 25.1284, 
-            24.9902, 25.0152, 24.7836, 24.8225, 24.6905, 
-            24.1645, 24.1352, 24.0754, 23.9102, 23.7082, 
-            23.4754, 23.4602, 22.9874, 23.1254, 22.6592, 
-            22.5952, 22.6692, 24.7554, 23.9784, 22.7554, 23.5754
-        ],
-        "longitude": [
-            121.5668, 121.5432, 121.4654, 121.4742, 121.7412, 
-            121.2154, 121.2982, 121.0182, 121.0142, 120.9084, 
-            120.6432, 120.6952, 120.5442, 120.6854, 120.4325, 
-            120.4432, 120.2915, 120.2014, 120.2982, 120.2845, 
-            120.3064, 120.4862, 121.7512, 121.6112, 121.1512, 119.5664
-        ]
-    }
-    return pd.DataFrame(data)
+def load_real_data():
+    csv_file = "real_taiwan_income.csv"
+
+    # 防呆機制：如果找不到真實檔案，會顯示警告
+    if not os.path.exists(csv_file):
+        st.error(f"❌ 系統找不到真實數據檔：{csv_file}，請確認檔案是否已上傳至同一個資料夾。")
+        return pd.DataFrame()
+
+    # 讀取真實數據
+    df_data = pd.read_csv(csv_file, encoding="utf-8")
+    return df_data
 
 
-df = load_market_data()
+df = load_real_data()
 
-# 3. 左側側邊欄：互動式控制面板
-st.sidebar.header("🎛️ 展店市場篩選條件")
+if not df.empty:
+    # 3. 左側側邊欄：互動式控制面板
+    st.sidebar.header("🎛️ 展店市場篩選條件")
 
-# 控制面板切換為「中位數」篩選，防範極端高收入極端值干擾
-min_median_income = st.sidebar.slider(
-    "最低里居民【所得中位數】(萬元)",
-    min_value=60,
-    max_value=250,
-    value=75,
-    step=5,
-)
+    # 控制面板全面採用「真實所得中位數」作為基本盤篩選
+    min_median_income = st.sidebar.slider(
+        "最低里居民【所得中位數】(萬元)",
+        min_value=int(df["所得中位數_萬元"].min()),
+        max_value=int(df["所得中位數_萬元"].max()),
+        value=75,
+        step=5,
+    )
 
-min_age_ratio = st.sidebar.slider(
-    "目標核心客群佔比門檻 (%)",
-    min_value=20,
-    max_value=40,
-    value=25,
-    step=1,
-)
+    min_age_ratio = st.sidebar.slider(
+        "目標核心客群佔比門檻 (%)",
+        min_value=20,
+        max_value=40,
+        value=25,
+        step=1,
+    )
 
-city_list = df["縣市"].unique()
-selected_cities = st.sidebar.multiselect("選擇評估縣市", city_list, default=city_list)
+    city_list = sorted(df["縣市"].unique())
+    selected_cities = st.sidebar.multiselect(
+        "選擇評估縣市", city_list, default=city_list
+    )
 
-# 4. 數據篩選與精準權重計分邏輯
-filtered_df = df[
-    (df["所得中位數_萬元"] >= min_median_income)
-    & (df["目標年齡層佔比_百分比"] >= min_age_ratio)
-    & (df["縣市"].isin(selected_cities))
-]
+    # 4. 數據篩選與精準權重計分邏輯 (商用演算法)
+    filtered_df = df[
+        (df["所得中位數_萬元"] >= min_median_income)
+        & (df["目標年齡層佔比_百分比"] >= min_age_ratio)
+        & (df["縣市"].isin(selected_cities))
+    ]
 
-# 調整展店潛力總分演算法：中位數佔40%、平均數佔20%、年齡佔比佔40%
-filtered_df["展店潛力總分"] = (
-    (filtered_df["所得中位數_萬元"] * 0.4)
-    + (filtered_df["所得平均數_萬元"] * 0.2)
-    + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
-).round(1)
-filtered_df = filtered_df.sort_values(by="展店潛力總分", ascending=False)
+    # 調整展店潛力總分演算法：中位數佔40%、平均數佔20%、年齡佔比佔40%
+    filtered_df["展店潛力總分"] = (
+        (filtered_df["所得中位數_萬元"] * 0.4)
+        + (filtered_df["所得平均數_萬元"] * 0.2)
+        + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
+    ).round(1)
+    filtered_df = filtered_df.sort_values(by="展店潛力總分", ascending=False)
 
-# 5. 前端網頁排版 (左右雙欄視覺化呈現)
-col1, col2 = st.columns([6, 4])
+    # 5. 前端網頁排版 (左右雙欄視覺化呈現)
+    col1, col2 = st.columns([6, 4])
 
-with col1:
-    st.subheader("🗺️ 全台商圈展店潛力地理分布熱點")
-    if not filtered_df.empty:
-        # 地圖顏色深度改以中位數與潛力總分綜合判定
-        fig = px.scatter_mapbox(
-            filtered_df,
-            lat="latitude",
-            lon="longitude",
-            hover_name="附近核心商場/商圈",
-            hover_data=["縣市", "鄉鎮市區", "村里", "所得中位數_萬元", "所得平均數_萬元", "展店潛力總分"],
-            color="展店潛力總分",
-            size="所得中位數_萬元",
-            color_continuous_scale=px.colors.cyclical.IceFire,
-            size_max=22,
-            zoom=7,
-            mapbox_style="carto-positron",
-            height=580,
-        )
-        fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("⚠️ 當前篩選條件過於嚴格，地圖無符合之商圈。請放寬左側篩選標準。")
+    with col1:
+        st.subheader("🗺️ 全台商圈展店潛力地理分布熱點")
+        if not filtered_df.empty:
+            # 繪製全台 GIS 互動式地圖
+            fig = px.scatter_mapbox(
+                filtered_df,
+                lat="latitude",
+                lon="longitude",
+                hover_name="附近核心商場/商圈",
+                hover_data=[
+                    "縣市",
+                    "鄉鎮市區",
+                    "村里",
+                    "所得中位數_萬元",
+                    "所得平均數_萬元",
+                    "展店潛力總分",
+                ],
+                color="展店潛力總分",
+                size="所得中位數_萬元",
+                color_continuous_scale=px.colors.cyclical.IceFire,
+                size_max=22,
+                zoom=7,
+                mapbox_style="carto-positron",
+                height=580,
+            )
+            fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ 當前篩選條件過於嚴格，地圖無符合之商圈。請放寬左側篩選標準。")
 
-with col2:
-    st.subheader("🏆 最佳展店/進駐商場推薦排名")
-    if not filtered_df.empty:
-        display_df = filtered_df[
-            [
-                "附近核心商場/商圈",
+    with col2:
+        st.subheader("🏆 最佳展店/進駐商場推薦排名")
+        if not filtered_df.empty:
+            display_df = filtered_df[
+                [
+                    "附近核心商場/商圈",
+                    "縣市",
+                    "所得中位數_萬元",
+                    "所得平均數_萬元",
+                    "展店潛力總分",
+                ]
+            ].reset_index(drop=True)
+            display_df.columns = [
+                "核心商場/商圈",
                 "縣市",
-                "所得中位數_萬元",
-                "所得平均數_萬元",
-                "展店潛力總分",
+                "所得中位數",
+                "所得平均數",
+                "潛力總分",
             ]
-        ].reset_index(drop=True)
-        # 欄位重新命名方便閱讀
-        display_df.columns = ["核心商場/商圈", "縣市", "所得中位數", "所得平均數", "潛力總分"]
-        st.dataframe(display_df, use_container_width=True, height=540)
-    else:
-        st.info("暫無推薦資料")
+            st.dataframe(display_df, use_container_width=True, height=540)
+        else:
+            st.info("暫無推薦資料")
 
-st.write("---")
-st.subheader("📊 篩選商圈詳細數據明細")
-st.write("您可以比對「中位數」與「平均數」的差距。若兩者差距過大，代表該區貧富差距大，展店時應更依賴中位數。")
-st.dataframe(filtered_df, use_container_width=True)
+    st.write("---")
+    st.subheader("📊 篩選商圈詳細數據明細")
+    st.write(
+        "本表呈現真實官方統計。中位數貼近在地民情基本盤，平均數反應高消費力極端值，兩者差距可做為定價策略參考。"
+    )
+    st.dataframe(filtered_df, use_container_width=True)
