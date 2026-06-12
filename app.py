@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# 1. 網頁頁面初始化
 st.set_page_config(
     page_title="全台零售業展店數據決策系統", page_icon="📍", layout="wide"
 )
@@ -15,13 +14,13 @@ st.markdown(
 st.write("---")
 
 
-# 2. 大數據加載邏輯
+# 改讀取全新命名的 CSV 檔
 @st.cache_data
 def load_real_data():
-    csv_file = "real_taiwan_income.csv"
+    csv_file = "taiwan_district_mall.csv"  # 確保與改名後的檔案一致
 
     if not os.path.exists(csv_file):
-        st.warning("⚠️ 正在加載數據庫，請稍候...")
+        st.warning("⚠️ 數據庫同步中，請稍候...")
         return pd.DataFrame()
 
     try:
@@ -35,9 +34,9 @@ def load_real_data():
 df = load_real_data()
 
 if df.empty:
-    st.info("💡 請確保 real_taiwan_income.csv 已正確生成。")
+    st.info("💡 請確認對應的 CSV 檔案是否已成功生成並同步。")
 else:
-    # 3. 左側控制面板
+    # 控制面板
     st.sidebar.header("🎛️ 展店市場篩選條件")
 
     min_income = float(df["所得中位數_萬元"].min())
@@ -64,7 +63,7 @@ else:
         "選擇評估縣市", city_list, default=city_list
     )
 
-    # 4. 數據篩選與商業潛力計分演算法 (中位數權重佔40%、平均數20%、年齡客群40%)
+    # 數據篩選
     filtered_df = df[
         (df["所得中位數_萬元"] >= min_median_income)
         & (df["目標年齡層佔比_百分比"] >= min_age_ratio)
@@ -73,30 +72,27 @@ else:
 
     filtered_df["展店潛力總分"] = (
         (filtered_df["所得中位數_萬元"] * 0.4)
-        + (filtered_df["所得平均數_萬元"] * 0.2)
-        + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
-    ).round(1)
+        + (filtered_df["附近核心商場/商圈"].get("所得平均數_萬元", 100) * 0.2)
+        if "所得平均數_萬元" in filtered_df.columns
+        else (filtered_df["所得中位數_萬元"] * 0.6)
+    ) + (filtered_df["目標年齡層佔比_百分比"] * 4.0)
+
+    if not filtered_df.empty:
+        filtered_df["展店潛力總分"] = filtered_df["展店潛力總分"].round(1)
+
     filtered_df = filtered_df.sort_values(by="展店潛力總分", ascending=False)
 
-    # 5. 前端排版 (左地圖、右排名)
     col1, col2 = st.columns([6, 4])
 
     with col1:
         st.subheader("🗺️ 全台商圈核心商場地理分布熱點")
         if not filtered_df.empty:
-            # GIS 地圖直接以真實商場為 Hover 主標題
             fig = px.scatter_mapbox(
                 filtered_df,
                 lat="latitude",
                 lon="longitude",
                 hover_name="附近核心商場/商圈",
-                hover_data=[
-                    "縣市",
-                    "鄉鎮市區",
-                    "所得中位數_萬元",
-                    "所得平均數_萬元",
-                    "展店潛力總分",
-                ],
+                hover_data=["縣市", "鄉鎮市區", "所得中位數_萬元", "展店潛力總分"],
                 color="展店潛力總分",
                 size="所得中位數_萬元",
                 color_continuous_scale=px.colors.cyclical.IceFire,
@@ -108,19 +104,13 @@ else:
             fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("⚠️ 沒有符合當前篩選條件的行政區，請調低左側滑桿門檻。")
+            st.warning("⚠️ 沒有符合當前篩選條件的行政區。")
 
     with col2:
         st.subheader("🏆 最佳展店/進駐商場推薦排名")
         if not filtered_df.empty:
             display_df = filtered_df[
-                [
-                    "附近核心商場/商圈",
-                    "縣市",
-                    "鄉鎮市區",
-                    "所得中位數_萬元",
-                    "展店潛力總分",
-                ]
+                ["附近核心商場/商圈", "縣市", "鄉鎮市區", "所得中位數_萬元", "展店潛力總分"]
             ].reset_index(drop=True)
             display_df.columns = [
                 "主要進駐商場 / 商圈",
